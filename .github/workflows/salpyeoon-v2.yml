@@ -20,10 +20,12 @@ on:
         default: true
         type: boolean
 
-  # 아래 스케줄은 Repository variable SALPYEOON_V2_ENABLED=true 일 때만 실제 job이 실행됩니다.
+  # 자동 실행 스케줄
   # UTC 기준 / 한국시간: 07:30, 11:00, 13:10, 17:20, 20:40, 23:30
   schedule:
+    # ★ 임시 테스트용: 5분마다 실행 / 실제 게시 안 함
     - cron: '*/5 * * * *'
+
     - cron: '30 22 * * *'  # 07:30 KST inform (+ discover 자동)
     - cron: '0 2 * * *'    # 11:00 KST desire
     - cron: '10 4 * * *'   # 13:10 KST sell
@@ -40,6 +42,7 @@ jobs:
   run:
     if: ${{ github.event_name == 'workflow_dispatch' || vars.SALPYEOON_V2_ENABLED == 'true' }}
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -48,28 +51,86 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           if [ "${{ github.event_name }}" = "schedule" ]; then
+
             case "${{ github.event.schedule }}" in
-              "30 22 * * *") STAGE="inform" ;;
-              "0 2 * * *") STAGE="desire" ;;
-              "10 4 * * *") STAGE="sell" ;;
-              "20 8 * * *") STAGE="talk" ;;
-              "40 11 * * *") STAGE="social" ;;
-              "30 14 * * *") STAGE="learn" ;;
-              "50 14 * * 0") STAGE="weekly" ;;
-              "0 0 1 * *") STAGE="monthly" ;;
-              *) echo "Unknown cron"; exit 1 ;;
+
+              # ★ 5분 자동실행 테스트
+              # GitHub schedule 작동 여부만 확인하고 게시하지 않음
+              "*/5 * * * *")
+                STAGE="inform"
+                DRY_RUN="true"
+                DRAFT="true"
+                ;;
+
+              "30 22 * * *")
+                STAGE="inform"
+                DRY_RUN="false"
+                DRAFT="false"
+                ;;
+
+              "0 2 * * *")
+                STAGE="desire"
+                DRY_RUN="false"
+                DRAFT="false"
+                ;;
+
+              "10 4 * * *")
+                STAGE="sell"
+                DRY_RUN="false"
+                DRAFT="false"
+                ;;
+
+              "20 8 * * *")
+                STAGE="talk"
+                DRY_RUN="false"
+                DRAFT="false"
+                ;;
+
+              "40 11 * * *")
+                STAGE="social"
+                DRY_RUN="false"
+                DRAFT="false"
+                ;;
+
+              "30 14 * * *")
+                STAGE="learn"
+                DRY_RUN="false"
+                DRAFT="false"
+                ;;
+
+              "50 14 * * 0")
+                STAGE="weekly"
+                DRY_RUN="false"
+                DRAFT="false"
+                ;;
+
+              "0 0 1 * *")
+                STAGE="monthly"
+                DRY_RUN="false"
+                DRAFT="false"
+                ;;
+
+              *)
+                echo "Unknown cron: ${{ github.event.schedule }}"
+                exit 1
+                ;;
             esac
-            DRY_RUN="false"
-            DRAFT="false"
+
           else
             STAGE="${{ inputs.stage }}"
             DRY_RUN="${{ inputs.dry_run }}"
             DRAFT="${{ inputs.draft }}"
           fi
+
           echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
           echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
           echo "draft=$DRAFT" >> "$GITHUB_OUTPUT"
+
+          echo "Resolved stage=$STAGE"
+          echo "Resolved dry_run=$DRY_RUN"
+          echo "Resolved draft=$DRAFT"
 
       - uses: actions/setup-python@v5
         with:
@@ -97,9 +158,19 @@ jobs:
         shell: bash
         run: |
           EXTRA=""
-          if [ "${{ steps.cfg.outputs.dry_run }}" = "true" ]; then EXTRA="$EXTRA --no-publish"; fi
-          if [ "${{ steps.cfg.outputs.draft }}" = "true" ]; then EXTRA="$EXTRA --draft"; fi
-          python -m src.run_stage --stage "${{ steps.cfg.outputs.stage }}" --state-dir state-repo/data/v2 $EXTRA | tee run-output.json
+
+          if [ "${{ steps.cfg.outputs.dry_run }}" = "true" ]; then
+            EXTRA="$EXTRA --no-publish"
+          fi
+
+          if [ "${{ steps.cfg.outputs.draft }}" = "true" ]; then
+            EXTRA="$EXTRA --draft"
+          fi
+
+          python -m src.run_stage \
+            --stage "${{ steps.cfg.outputs.stage }}" \
+            --state-dir state-repo/data/v2 \
+            $EXTRA | tee run-output.json
 
       - name: Save agent state
         if: always()
@@ -108,9 +179,12 @@ jobs:
         shell: bash
         run: |
           cd state-repo
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add data/v2
+
           if git diff --cached --quiet; then
             echo "No state changes"
           else
