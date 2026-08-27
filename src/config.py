@@ -1,6 +1,6 @@
 import os
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 THREADS_SERVICE = "threads"
 MAX_THREAD_CHARS = int(os.getenv("MAX_THREAD_CHARS", "480"))
 DISCLOSURE = "이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다."
