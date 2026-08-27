@@ -9,7 +9,7 @@ from .product import choose as choose_product
 from .writer import write, write_social
 from .learner import learn, review
 from .baseline import capture as capture_baseline
-from .state import load_json, save_json, append_jsonl, load_today_plan, today
+from .state import load_json, save_json, append_jsonl, load_today_plan, load_today_posts, today
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -85,7 +85,8 @@ def main():
 
     if args.stage == "social":
         learning = load_json(args.state_dir, "learning.json", {})
-        text, sources = write_social(learning)
+        plan = load_today_plan(args.state_dir)
+        text, sources = write_social(learning, plan.get("topic", ""))
         # 검색 근거가 있는 글이면 첫 출처를 덧붙이되, 단순 공감문이면 모델이 링크 없이 끝내도 된다.
         response = None if args.no_publish else publish_text(text, args.draft)
         row = log_post(args.state_dir, "social", {}, text, response, {"sources": sources[:5]})
@@ -107,7 +108,8 @@ def main():
         product = pick.product
         extra = {"product": product, "product_keyword": pick.keyword, "product_score": pick.score}
 
-    text = write(args.stage, plan, learning, product)
+    history = load_today_posts(args.state_dir)
+    text = write(args.stage, plan, learning, product, history=history)
     response = None if args.no_publish else publish_text(text, args.draft)
     row = log_post(args.state_dir, args.stage, plan, text, response, extra)
     print(json.dumps(row, ensure_ascii=False, indent=2))

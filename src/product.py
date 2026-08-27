@@ -39,9 +39,21 @@ def score(p: dict, keyword: str, rank: int) -> float:
     return s
 
 
+def _clean_keyword(keyword: str) -> str:
+    kw = re.sub(r"\s+", " ", (keyword or "").strip())
+    # Known high-risk Korean shopping typo seen in dry-run; harmless normalization.
+    kw = kw.replace("차엽", "차렵")
+    return kw
+
+
 def choose(search_terms: list[str]) -> ProductPick | None:
     candidates = []
-    for kw in (search_terms or [])[:4]:
+    cleaned = []
+    for raw in (search_terms or [])[:4]:
+        kw = _clean_keyword(raw)
+        if kw and kw not in cleaned:
+            cleaned.append(kw)
+    for kw in cleaned:
         try:
             for rank, p in enumerate(coupang.search(kw, 10), 1):
                 s = score(p, kw, rank)

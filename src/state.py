@@ -39,3 +39,18 @@ def today():
 def load_today_plan(root):
     plan = load_json(root, "current_plan.json", {})
     return plan if plan.get("date") == today() else {}
+
+
+def load_today_posts(root):
+    p = _path(root, "post_log.jsonl")
+    if not p.exists():
+        return []
+    out = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        try:
+            row = json.loads(line)
+            if row.get("date") == today():
+                out.append(row)
+        except Exception:
+            continue
+    return out

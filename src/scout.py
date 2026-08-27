@@ -52,6 +52,7 @@ def discover_topic(learning: dict | None = None) -> dict:
 
 평가: 시의성25 + Threads 대화20 + 쿠팡 상품 자연스러운 연결20 + 지금 살 이유20 + 콘텐츠 확장15 = 100.
 콘텐츠 확장은 요리/맛집으로 고정하지 않는다. 카테고리에 맞춰 사용팁, 비교, 공감, 생활상황, 장소, 취향질문 등으로 설계한다.
+product_search_terms는 실제 쿠팡에서 검색할 법한 짧고 표준적인 한국어 상품명으로 쓴다. 신조어/오타/억지 수식어를 만들지 않는다.
 과거 운영 피드백: {json.dumps(learning, ensure_ascii=False)[:6000]}
 
 수집 데이터:

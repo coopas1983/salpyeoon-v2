@@ -53,6 +53,9 @@ def _prompt(existing, recent, horizon, baseline):
 
 [과잉학습 금지]
 - 표본이 작으면 confidence를 낮춘다.
+- sample_size가 3 미만이면 관찰 단계다. 시간대/주제/페르소나를 바꾸라는 확정적 directives를 만들지 말고 데이터 축적을 우선한다.
+- sample_size가 3~4면 변경은 테스트 제안 수준으로만 쓴다.
+- sample_size가 5 이상일 때부터 반복 패턴이 보이면 전략 변경 지침을 낼 수 있다.
 - 하루 한 게시물이 튄 것만으로 전체 전략을 뒤집지 않는다.
 - 무엇이 성공했고 무엇이 실패했는지를 한 점수로 뭉개지 않는다.
 

@@ -80,3 +80,11 @@ V1의 월별 과일/뷰티/생활용품 고정 리스트, 상품 카드 이미�
 - **불변 규칙**: 게시 성공은 완료가 아닙니다. 측정하고 다음 행동이 정해져야 한 사이클이 완료됩니다.
 
 클릭/구매 metric이 Buffer에서 제공되지 않는 경우 시스템은 해당 레인을 `unknown`으로 처리합니다. 쿠팡 성과 데이터를 자동으로 읽는 연결은 별도 단계로 추가할 수 있습니다.
+
+## V2 final dry-run refinements
+- SOCIAL no longer uses Gemini Google Search grounding. External NEWS/TREND radar data is collected first; Gemini only selects and writes.
+- INFORM/DESIRE/SELL/TALK receive same-day post history to avoid repeating examples, questions, and endings.
+- SELL forbids invented first-person purchase/use/comparison experience.
+- Product search normalizes the observed `차엽` -> `차렵` typo and prompts for standard Korean shopping terms.
+- LEARN treats fewer than 3 samples as observation-only and avoids premature strategy changes.
+- Default Gemini model is `gemini-3.6-flash`; repository variable `GEMINI_MODEL` can override it.
