@@ -20,20 +20,23 @@ on:
         default: true
         type: boolean
 
-  # 자동 실행 스케줄
-  # UTC 기준 / 한국시간: 07:30, 11:00, 13:10, 17:20, 20:40, 23:30
   schedule:
-    - cron: '30 22 * * *'  # 07:30 KST inform (+ discover 자동)
+    - cron: '30 22 * * *'  # 07:30 KST inform
     - cron: '0 2 * * *'    # 11:00 KST desire
     - cron: '10 4 * * *'   # 13:10 KST sell
     - cron: '20 8 * * *'   # 17:20 KST talk
     - cron: '40 11 * * *'  # 20:40 KST social
     - cron: '30 14 * * *'  # 23:30 KST learn
-    - cron: '50 14 * * 0'  # 일요일 23:50 KST weekly review
-    - cron: '0 0 1 * *'    # 매월 1일 09:00 KST monthly strategy
+    - cron: '50 14 * * 0'  # Sunday 23:50 KST weekly
+    - cron: '0 0 1 * *'    # first day 09:00 KST monthly
 
 permissions:
   contents: read
+
+# State is shared in salpyeoon-images. Never let two runs mutate it at once.
+concurrency:
+  group: salpyeoon-v2-state
+  cancel-in-progress: false
 
 jobs:
   run:
@@ -43,78 +46,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve stage
+      - name: Resolve stage and reject stale schedules
         id: cfg
         shell: bash
         run: |
           set -euo pipefail
+          SHOULD_RUN="true"
 
           if [ "${{ github.event_name }}" = "schedule" ]; then
-
             case "${{ github.event.schedule }}" in
-
-              # ★ 5분 자동실행 테스트
-              # GitHub schedule 작동 여부만 확인하고 게시하지 않음
-              "*/5 * * * *")
-                STAGE="inform"
-                DRY_RUN="true"
-                DRAFT="true"
-                ;;
-
-              "30 22 * * *")
-                STAGE="inform"
-                DRY_RUN="false"
-                DRAFT="false"
-                ;;
-
-              "0 2 * * *")
-                STAGE="desire"
-                DRY_RUN="false"
-                DRAFT="false"
-                ;;
-
-              "10 4 * * *")
-                STAGE="sell"
-                DRY_RUN="false"
-                DRAFT="false"
-                ;;
-
-              "20 8 * * *")
-                STAGE="talk"
-                DRY_RUN="false"
-                DRAFT="false"
-                ;;
-
-              "40 11 * * *")
-                STAGE="social"
-                DRY_RUN="false"
-                DRAFT="false"
-                ;;
-
-              "30 14 * * *")
-                STAGE="learn"
-                DRY_RUN="false"
-                DRAFT="false"
-                ;;
-
-              "50 14 * * 0")
-                STAGE="weekly"
-                DRY_RUN="false"
-                DRAFT="false"
-                ;;
-
-              "0 0 1 * *")
-                STAGE="monthly"
-                DRY_RUN="false"
-                DRAFT="false"
-                ;;
-
+              "30 22 * * *") STAGE="inform";  DRY_RUN="false"; DRAFT="false"; HOUR=22; MIN=30 ;;
+              "0 2 * * *")   STAGE="desire";  DRY_RUN="false"; DRAFT="false"; HOUR=2;  MIN=0  ;;
+              "10 4 * * *")  STAGE="sell";    DRY_RUN="false"; DRAFT="false"; HOUR=4;  MIN=10 ;;
+              "20 8 * * *")  STAGE="talk";    DRY_RUN="false"; DRAFT="false"; HOUR=8;  MIN=20 ;;
+              "40 11 * * *") STAGE="social";  DRY_RUN="false"; DRAFT="false"; HOUR=11; MIN=40 ;;
+              "30 14 * * *") STAGE="learn";   DRY_RUN="false"; DRAFT="false"; HOUR=14; MIN=30 ;;
+              "50 14 * * 0") STAGE="weekly";  DRY_RUN="false"; DRAFT="false"; HOUR=14; MIN=50 ;;
+              "0 0 1 * *")   STAGE="monthly"; DRY_RUN="false"; DRAFT="false"; HOUR=0;  MIN=0  ;;
               *)
                 echo "Unknown cron: ${{ github.event.schedule }}"
                 exit 1
                 ;;
             esac
 
+            # GitHub scheduled runs can be delayed. Work out the most recent intended
+            # UTC slot and reject anything more than 90 minutes late.
+            NOW_EPOCH="$(date -u +%s)"
+            TODAY="$(date -u +%Y-%m-%d)"
+            TARGET_EPOCH="$(date -u -d "${TODAY} $(printf '%02d:%02d' "$HOUR" "$MIN"):00" +%s)"
+            if [ "$TARGET_EPOCH" -gt "$NOW_EPOCH" ]; then
+              TARGET_EPOCH=$((TARGET_EPOCH - 86400))
+            fi
+            LATE_SECONDS=$((NOW_EPOCH - TARGET_EPOCH))
+
+            if [ "$LATE_SECONDS" -gt 5400 ]; then
+              SHOULD_RUN="false"
+              echo "Stale scheduled run rejected: ${LATE_SECONDS}s late"
+            fi
           else
             STAGE="${{ inputs.stage }}"
             DRY_RUN="${{ inputs.dry_run }}"
@@ -124,19 +92,24 @@ jobs:
           echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
           echo "dry_run=$DRY_RUN" >> "$GITHUB_OUTPUT"
           echo "draft=$DRAFT" >> "$GITHUB_OUTPUT"
+          echo "should_run=$SHOULD_RUN" >> "$GITHUB_OUTPUT"
 
           echo "Resolved stage=$STAGE"
           echo "Resolved dry_run=$DRY_RUN"
           echo "Resolved draft=$DRAFT"
+          echo "Resolved should_run=$SHOULD_RUN"
 
       - uses: actions/setup-python@v5
+        if: steps.cfg.outputs.should_run == 'true'
         with:
           python-version: '3.12'
 
       - name: Install dependencies
+        if: steps.cfg.outputs.should_run == 'true'
         run: pip install -r requirements.txt
 
       - name: Clone state repository
+        if: steps.cfg.outputs.should_run == 'true'
         env:
           IMAGES_TOKEN: ${{ secrets.SALPYEOON_IMAGES_TOKEN }}
           OWNER: ${{ github.repository_owner }}
@@ -145,6 +118,7 @@ jobs:
           mkdir -p state-repo/data/v2
 
       - name: Run agent stage
+        if: steps.cfg.outputs.should_run == 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.6-flash' }}
@@ -170,11 +144,12 @@ jobs:
             $EXTRA | tee run-output.json
 
       - name: Save agent state
-        if: always()
+        if: always() && steps.cfg.outputs.should_run == 'true'
         env:
           IMAGES_TOKEN: ${{ secrets.SALPYEOON_IMAGES_TOKEN }}
         shell: bash
         run: |
+          set -euo pipefail
           cd state-repo
 
           git config user.name "github-actions[bot]"
@@ -184,13 +159,28 @@ jobs:
 
           if git diff --cached --quiet; then
             echo "No state changes"
-          else
-            git commit -m "salpyeoon v2 state: ${{ steps.cfg.outputs.stage }}"
-            git push origin HEAD:main
+            exit 0
           fi
 
+          git commit -m "salpyeoon v2 state: ${{ steps.cfg.outputs.stage }}"
+
+          # A different writer may have changed salpyeoon-images. Rebase and retry
+          # instead of losing this run with a non-fast-forward error.
+          for n in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "State push retry $n/3"
+            sleep $((n * 2))
+          done
+
+          echo "State push failed after retries"
+          exit 1
+
       - name: Upload run result
-        if: always()
+        if: always() && steps.cfg.outputs.should_run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: salpyeoon-v2-${{ steps.cfg.outputs.stage }}-${{ github.run_id }}
