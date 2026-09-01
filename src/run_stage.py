@@ -44,6 +44,13 @@ def log_post(state_dir, stage, plan, text, response, extra=None):
     return row
 
 
+def already_published_today(state_dir: str, stage: str) -> bool:
+    for row in load_today_posts(state_dir):
+        if row.get("stage") == stage and row.get("buffer_post_id"):
+            return True
+    return False
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stage", choices=["baseline", "discover", "inform", "desire", "sell", "talk", "social", "learn", "weekly", "monthly"], required=True)
@@ -74,7 +81,6 @@ def main():
             learned = review(existing, baseline, days=7, horizon="weekly")
             save_json(args.state_dir, "reviews/weekly-latest.json", learned)
             save_json(args.state_dir, f"reviews/{today()}-weekly.json", learned)
-            # 주간 검토의 구체 지침은 다음날 생성에도 참고하도록 합친다.
             save_json(args.state_dir, "learning.json", learned)
         else:
             learned = review(existing, baseline, days=30, horizon="monthly-strategy")
@@ -83,13 +89,25 @@ def main():
         print(json.dumps(learned, ensure_ascii=False, indent=2))
         return
 
+    # A real published row for the same KST date/stage means this slot is already done.
+    # Dry-run rows have no Buffer id and therefore do not block a later real publish.
+    if not args.no_publish and already_published_today(args.state_dir, args.stage):
+        print(json.dumps({
+            "skip": True,
+            "stage": args.stage,
+            "reason": "already published today"
+        }, ensure_ascii=False, indent=2))
+        return
+
     if args.stage == "social":
-        learning = load_json(args.state_dir, "learning.json", {})
-        plan = load_today_plan(args.state_dir)
-        text, sources = write_social(learning, plan.get("topic", ""))
-        # 검색 근거가 있는 글이면 첫 출처를 덧붙이되, 단순 공감문이면 모델이 링크 없이 끝내도 된다.
+        plan, learning = ensure_plan(args.state_dir)
+        if plan.get("no_topic"):
+            print(json.dumps({"skip": True, "stage": "social", "reason": plan.get("reason_if_no_topic", "no topic")}, ensure_ascii=False, indent=2))
+            return
+        history = load_today_posts(args.state_dir)
+        text, sources = write_social(plan, learning, history=history)
         response = None if args.no_publish else publish_text(text, args.draft)
-        row = log_post(args.state_dir, "social", {}, text, response, {"sources": sources[:5]})
+        row = log_post(args.state_dir, "social", plan, text, response, {"sources": sources[:5]})
         print(json.dumps(row, ensure_ascii=False, indent=2))
         return
 

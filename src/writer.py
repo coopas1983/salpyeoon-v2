@@ -1,9 +1,7 @@
-import json
 import re
-from .ai import ask_text, ask_json
+from .ai import ask_text
 from .persona import BASE_PERSONA, STAGE_PERSONAS
 from .config import DISCLOSURE, MAX_THREAD_CHARS
-from .radar import collect_all
 
 
 def _learning_text(learning: dict) -> str:
@@ -100,37 +98,17 @@ INFORM에서 이미 쓴 물건 목록이나 선택지를 다시 나열하지 않
     return text[:MAX_THREAD_CHARS]
 
 
-def write_social(learning: dict, main_topic: str = "") -> tuple[str, list[dict]]:
-    """B-plan SOCIAL: external RSS radars collect; Gemini only selects/writes."""
-    radar = collect_all()
-    candidates = []
-    for x in radar.get("trend", [])[:20]:
-        if "error" not in x:
-            candidates.append(x)
-    for x in radar.get("news", [])[:30]:
-        if "error" not in x:
-            candidates.append(x)
-
-    prompt = f"""
-{BASE_PERSONA}
-현재 모드: {STAGE_PERSONAS['social']}
-인터넷 검색 도구를 사용하지 마라. 아래 외부 수집기가 가져온 후보만 사용한다.
-오늘 메인 판매 주제 '{main_topic}'와는 일부러 다른 가벼운 화제를 하나 고른다.
-정치, 범죄, 사망, 재난, 전쟁, 투자, 선정적 사건, 확인하기 어려운 루머는 제외한다.
-쿠팡/상품/판매 이야기는 절대 하지 않는다.
-뉴스봇처럼 요약하지 말고 평범한 사람이 보고 한마디 툭 던지는 Threads 글로 쓴다.
+def write_social(plan: dict, learning: dict, history=None) -> tuple[str, list[dict]]:
+    """Keep SOCIAL inside today's main topic; no external radar/topic switching."""
+    prompt = _base("social", plan, learning, history)
+    prompt += """
+저녁 SOCIAL 글이다.
+오늘 메인 주제 밖으로 절대 벗어나지 않는다. 새로운 뉴스·트렌드·외부 화제를 찾지 않는다.
+대신 같은 주제 안에서 앞선 글과 겹치지 않는 아주 가벼운 생활 장면, 감정, 습관, 취향, 사소한 고민 중 하나를 고른다.
+판매 냄새는 0이어야 한다. 상품명, 가격, 할인, 쿠팡, 제휴 링크, 구매 유도는 절대 넣지 않는다.
+정보를 가르치려 하지 말고 실제 사람이 하루 끝에 툭 올리는 공감 글처럼 쓴다.
 실제로 겪은 일인 척하지 않는다. 사실을 지어내지 않는다.
-질문은 꼭 필요할 때만. 250자 안팎, 짧아도 된다.
-최근 성과 피드백: {_learning_text(learning)}
-
-후보 데이터:
-{json.dumps(candidates, ensure_ascii=False)[:18000]}
-
-JSON 객체 하나만 출력:
-{{"text":"게시 본문", "source_title":"선택한 후보의 정확한 title", "source_url":"선택한 후보의 정확한 url"}}
+질문은 자연스러울 때만. 250자 안팎, 짧아도 된다.
 """
-    obj, _ = ask_json(prompt, use_search=False)
-    text = str(obj.get("text", "")).strip()[:MAX_THREAD_CHARS]
-    source = {"title": obj.get("source_title", ""), "url": obj.get("source_url", ""), "source": "external radar"}
-    sources = [source] if source["url"] else []
-    return text, sources
+    text, _ = ask_text(prompt, use_search=False)
+    return text.strip()[:MAX_THREAD_CHARS], []
